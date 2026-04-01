@@ -14,6 +14,7 @@ model User {
   createdAt DateTime @default(now())
 
   appointments Appointment[]
+  sessions     WhatsAppSession[]
 }
 
 model Branch {
@@ -90,6 +91,21 @@ model Appointment {
   @@index([branchId])
 }
 
+model WhatsAppSession {
+  id                  String              @id @default(uuid())
+  phone               String              @unique
+  userId              String?
+  state               WhatsAppFlowState   @default(IDLE)
+  selectedBranchId    String?
+  selectedServiceIds  String              @default("")
+  pendingCustomerName String?
+  pendingDate         String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
 model Review {
   id        String   @id @default(uuid())
   name      String
@@ -118,4 +134,13 @@ enum AppointmentStatus {
   PENDING
   CONFIRMED
   CANCELLED
+}
+
+enum WhatsAppFlowState {
+  IDLE
+  AWAITING_BRANCH
+  AWAITING_SERVICE
+  AWAITING_NAME
+  AWAITING_DATE
+  AWAITING_TIME
 }

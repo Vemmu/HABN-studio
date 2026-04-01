@@ -94,3 +94,7 @@ Set `DATABASE_URL` in your deployment environment.
 - Online payment integration
 - Staff management
 - Loyalty program
+
+
+this is for cloudflare tunnel to test the whatsapp messages:
+npx.cmd cloudflared tunnel --url http://localhost:3000

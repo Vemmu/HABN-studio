@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { formatPrice } from "@/lib/utils";
+import { formatDuration, formatPrice } from "@/lib/utils";
 
 interface Appointment {
   id: string;
@@ -10,7 +10,9 @@ interface Appointment {
   status: string;
   user: { name: string; phone: string };
   branch?: { name: string };
-  appointmentServices: { service: { name: string; price: number; duration: number } }[];
+  appointmentServices: {
+    service: { name: string; price: number; duration: number };
+  }[];
 }
 
 export default function AppointmentsManager({
@@ -21,26 +23,81 @@ export default function AppointmentsManager({
   showBranch?: boolean;
 }) {
   const [appointments, setAppointments] = useState(initialAppointments);
+  const [feedback, setFeedback] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const updateStatus = async (id: string, status: string) => {
+    setFeedback(null);
+    setUpdatingId(id);
+
     try {
       const res = await fetch(`/api/appointments/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
-      if (res.ok) {
-        setAppointments((a) =>
-          a.map((x) => (x.id === id ? { ...x, status } : x))
-        );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setFeedback({
+          type: "error",
+          message:
+            typeof data?.error === "string"
+              ? data.error
+              : "Failed to update appointment status.",
+        });
+        return;
       }
-    } catch (e) {
-      console.error(e);
+
+      setAppointments((current) =>
+        current.map((appointment) =>
+          appointment.id === id
+            ? {
+                ...appointment,
+                status: data.status,
+              }
+            : appointment
+        )
+      );
+
+      setFeedback({
+        type: "success",
+        message:
+          status === "CONFIRMED"
+            ? "Appointment confirmed and customer notified on WhatsApp."
+            : status === "CANCELLED"
+            ? "Appointment cancelled and customer notified on WhatsApp."
+            : "Appointment updated successfully.",
+      });
+    } catch (error) {
+      console.error(error);
+      setFeedback({
+        type: "error",
+        message: "Something went wrong while updating the appointment.",
+      });
+    } finally {
+      setUpdatingId(null);
     }
   };
 
   return (
     <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
+      {feedback && (
+        <div
+          className={`border-b px-4 py-3 text-sm ${
+            feedback.type === "success"
+              ? "border-green-200 bg-green-50 text-green-800"
+              : "border-red-200 bg-red-50 text-red-800"
+          }`}
+        >
+          {feedback.message}
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead className="bg-stone-50">
@@ -54,66 +111,69 @@ export default function AppointmentsManager({
             </tr>
           </thead>
           <tbody>
-            {appointments.map((a) => {
-              const totalPrice = a.appointmentServices.reduce(
-                (sum, as) => sum + as.service.price,
+            {appointments.map((appointment) => {
+              const totalPrice = appointment.appointmentServices.reduce(
+                (sum, item) => sum + item.service.price,
                 0
               );
-              const totalDuration = a.appointmentServices.reduce(
-                (sum, as) => sum + as.service.duration,
+              const totalDuration = appointment.appointmentServices.reduce(
+                (sum, item) => sum + item.service.duration,
                 0
               );
+
               return (
-                <tr key={a.id} className="border-t border-stone-100">
+                <tr key={appointment.id} className="border-t border-stone-100">
                   <td className="p-4">
-                    <p className="font-medium">{a.user.name}</p>
-                    <p className="text-sm text-stone-500">{a.user.phone}</p>
+                    <p className="font-medium">{appointment.user.name}</p>
+                    <p className="text-sm text-stone-500">{appointment.user.phone}</p>
                   </td>
                   {showBranch && (
                     <td className="p-4 text-sm text-stone-600">
-                      {a.branch?.name ?? "—"}
+                      {appointment.branch?.name ?? "-"}
                     </td>
                   )}
                   <td className="p-4">
                     <ul className="space-y-1">
-                      {a.appointmentServices.map((as, i) => (
-                        <li key={i} className="text-sm">
-                          {as.service.name} — {formatPrice(as.service.price)}
+                      {appointment.appointmentServices.map((item, index) => (
+                        <li key={index} className="text-sm">
+                          {item.service.name} - {formatPrice(item.service.price)}
                         </li>
                       ))}
                     </ul>
                     <p className="text-xs text-stone-500 mt-1">
-                      Total: {formatPrice(totalPrice)} · {totalDuration} min
+                      Total: {formatPrice(totalPrice)} | {formatDuration(totalDuration)}
                     </p>
                   </td>
                   <td className="p-4">
-                    {format(new Date(a.date), "dd MMM yyyy, h:mm a")}
+                    {format(new Date(appointment.date), "dd MMM yyyy, h:mm a")}
                   </td>
                   <td className="p-4">
                     <span
                       className={`px-2 py-1 rounded text-sm ${
-                        a.status === "CONFIRMED"
+                        appointment.status === "CONFIRMED"
                           ? "bg-green-100 text-green-800"
-                          : a.status === "CANCELLED"
+                          : appointment.status === "CANCELLED"
                           ? "bg-red-100 text-red-800"
                           : "bg-amber-100 text-amber-800"
                       }`}
                     >
-                      {a.status}
+                      {appointment.status}
                     </span>
                   </td>
                   <td className="p-4">
-                    {a.status === "PENDING" && (
+                    {appointment.status === "PENDING" && (
                       <div className="flex gap-2">
                         <button
-                          onClick={() => updateStatus(a.id, "CONFIRMED")}
-                          className="text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+                          onClick={() => updateStatus(appointment.id, "CONFIRMED")}
+                          disabled={updatingId === appointment.id}
+                          className="text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          Confirm
+                          {updatingId === appointment.id ? "Updating..." : "Confirm"}
                         </button>
                         <button
-                          onClick={() => updateStatus(a.id, "CANCELLED")}
-                          className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                          onClick={() => updateStatus(appointment.id, "CANCELLED")}
+                          disabled={updatingId === appointment.id}
+                          className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           Cancel
                         </button>
@@ -126,10 +186,9 @@ export default function AppointmentsManager({
           </tbody>
         </table>
       </div>
+
       {appointments.length === 0 && (
-        <p className="p-8 text-center text-stone-500">
-          No appointments yet
-        </p>
+        <p className="p-8 text-center text-stone-500">No appointments yet</p>
       )}
     </div>
   );
